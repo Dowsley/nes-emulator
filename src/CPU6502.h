@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <map>
 
 class Bus;
 
@@ -65,6 +66,8 @@ class CPU6502
 		void NMInterruptRequest();
 
 		/* Instructions mechanisms and states */
+		uint16_t tmp = 0x0000; // A convenience variable used everywhere
+
 		uint8_t fetched = 0x0000;
 		uint8_t Fetch();
 
@@ -75,6 +78,11 @@ class CPU6502
 
 		/* Others */
 		void ConnectBus(Bus *n);
+		bool Complete();
+
+		// Produces a map of strings, with keys equivalent to instruction start locations
+		// in memory, for the specified address range
+		std::map<uint16_t, std::string> disassemble(uint16_t start, uint16_t stop);
 
 	private:
 		Bus *bus = nullptr;
