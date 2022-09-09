@@ -94,18 +94,34 @@ void CPU6502::TickClock()
 	cyclesLeft--;
 }
 
+/* Fetches data from address
+After any opcode except "Implied" - for it does not need it.
+It is used by opcode functions.
+*/
+uint8_t CPU6502::Fetch()
+{
+	if (!(lookup[opcode].addrmode == &CPU6502::IMP))
+		fetched = _read(addrAbs);
+	return fetched;
+}
+
 
 /* ----------------------------------------- *
                "Addressing Modes"
         What is the source of the data
 	      used in this instruction? 
 
+In this context, they setup and populate
+the address that the operation will be performed upon.
+
+Their return indicates if the whole instruction is candidate for an additional cycle.
+Note 1: Indexing is good to traverse contiguous blocks of memory, such as arrays.
+Note 2: The notation is little endian.
+
 http://www.emulator101.com/6502-addressing-modes.html
 https://wiki.cdot.senecacollege.ca/wiki/6502_Addressing_Modes
 * ---------------------------------------- */
 
-// Note 1: Indexing is good to traverse contiguous blocks of memory, such as arrays.
-// Note 2: The notation is little endian.
 
 /* "IMPLIED"
 The data is implied by the operation.
@@ -329,9 +345,297 @@ uint8_t CPU6502::REL()
 
 
 /* ----------------------------------------- *
-                    Others
+         "INSTRUCTIONS" OR "OPCODES"
+        
+		In this emulator an OPCODE is
+	   essentially an instruction, that
+	  will execute after the addrmode does.
+
+It will perform the necessary operations upon the
+address that was set up and populated by the address
+mode function that executed shortly before.
+
+Their return indicates if the whole instruction is candidate for an additional cycle.
+
+Main source: http://archive.6502.org/datasheets/rockwell_r65c00_microprocessors.pdf
+Also refer to:
+https://www.pagetable.com/c64ref/6502/?tab=2
+https://wiki.cdot.senecacollege.ca/wiki/6502_Instructions_-_Introduction
  * ---------------------------------------- */
 
+/***********/
+/*  ARITH  */
+/***********/
+/* "ADDITION" or "Add Memory to Accumulator with Carry"
+
+// */
+// uint8_t CPU6502::ADC()
+// {
+// 	return 0;
+// }
+
+
+
+/***********/
+/*  LOGIC  */
+/***********/
+
+/* "AND"
+Operation: A ∧ M → A
+Flags Out: N, Z
+
+Tranfers the accumulator and memory to the adder which performs
+a bit-by-bit AND operation and stores the result back in the accumulator.
+- affects the accumulator;
+- sets the zero flag if the result in the accumulator is 0
+	- otherwise resets the zero flag;
+- sets the negative flag if the result in the accumulator has bit 7 on,
+	- otherwise resets the negative flag.
+*/
+uint8_t CPU6502::AND()
+{
+	Fetch();
+	a = a & fetched;
+	_setFlag(Z, a == 0x00);
+	_setFlag(N, a & 0x80); // Remember, bit 7 is the sign
+	return 1;
+}
+
+
+/************/
+/*  BRANCH  */
+/************/
+// They usually alter the number of cycles left directly.
+// If their branching condition is met an extra cycle will be needed.
+// A further cycle penalty occurs if the branch needs to cross a page boundary.
+
+/* "Branch on Carry Set"
+Operation: if C == 1 -> pc = address
+*/
+uint8_t CPU6502::BCS()
+{
+	if (_getFlag(C) == 1)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch on Carry Clear"
+Operation: if C == 0 -> pc = address
+*/
+uint8_t CPU6502::BCC()
+{
+	if (_getFlag(C) == 0)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch if Equal" or "Branch on Result Zero"
+Operation: if Z == 1 -> pc = address
+*/
+uint8_t CPU6502::BEQ()
+{
+	if (_getFlag(Z) == 1)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch if Negative" or "Branch on Result Minus"
+Operation: if N == 1 -> pc = address
+*/
+uint8_t CPU6502::BMI()
+{
+	if (_getFlag(N) == 1)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch if Not Equal" or "Branch on Result Not Zero"
+Operation: if Z == 0 -> pc = address
+*/
+uint8_t CPU6502::BNE()
+{
+	if (_getFlag(Z) == 0)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch if Positive" or "Branch on Result Plus"
+Operation: if N == 0 -> pc = address
+*/
+uint8_t CPU6502::BPL()
+{
+	if (_getFlag(N) == 0)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch on Overflow Clear"
+Operation: if V == 0 -> pc = address
+*/
+uint8_t CPU6502::BVC()
+{
+	if (_getFlag(V) == 0)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/* "Branch on Overflow Set"
+Operation: if V == 1 -> pc = address
+*/
+uint8_t CPU6502::BVS()
+{
+	if (_getFlag(V) == 1)
+	{
+		cyclesLeft++;
+		addrAbs = pc + addrRel; // used as a temporary for checking
+
+		if ((addrAbs & 0xFF00) != (pc & 0xFF00)) // Does it want to cross a page boundary?
+			cyclesLeft++;
+		pc = addrAbs;
+	}
+	return 0;
+}
+
+/***********/
+/*  FLAGS  */
+/***********/
+// Manipulating (setting and clearing)
+// various condition flags.
+
+/* "Clear Carry Flag"
+Operation: if V == 10 → C -> pc = address
+Operation: 0 → C
+Should normally precede an ADC loop. 
+Also useful when used with a R0L instruction to clear a bit in memory.
+*/
+uint8_t CPU6502::CLC()
+{
+	_setFlag(C, false);
+	return 0;
+}
+
+/* "Clear Decimal Mode"
+Operation: 0 → D
+This allows all subsequent ADC and SBC instructions to operate as simple operations.
+XXX: On the MOS 6502, the value of the decimal mode flag is indeterminate after a RESET.
+
+TODO: Review the word "allow" on the statements above
+*/
+uint8_t CPU6502::CLD()
+{
+	_setFlag(D, false);
+	return 0;
+}
+
+/* "Clear Interrupt Disable"
+Operation: 0 → I
+This allows the microprocessor to receive interrupts.
+*/
+uint8_t CPU6502::CLI()
+{
+	_setFlag(I, false);
+	return 0;
+}
+
+/* "Clear Overflow Flag"
+Operation: 0 → V
+Is used in conjunction with the set overflow pin
+which can change the state of the overflow flag with an external signal.
+*/
+uint8_t CPU6502::CLV()
+{
+	_setFlag(V, false);
+	return 0;
+}
+
+/* "Set Carry Flag"
+Operation: 1 → C
+Should normally precede a SBC loop.
+Also useful when used with a ROL instruction to initialize a bit in memory to a 1.
+*/
+uint8_t CPU6502::SEC()
+{
+	_setFlag(C, true);
+	return 0;
+}
+
+
+/* "Set Decimal Mode"
+Operation: 1 → D
+This makes all subsequent ADC and SBC instructions
+operate as a decimal arithmetic operation.
+*/
+uint8_t CPU6502::SED()
+{
+	_setFlag(D, true);
+	return 0;
+}
+
+/* "Set Interrupt Disable"
+Operation: 1 → I
+
+It is used to mask interrupt requests during
+system reset operations and during interrupt commands.
+*/
+uint8_t CPU6502::SEI()
+{
+	_setFlag(I, true);
+	return 0;
+}
+
+
+/* ----------------------------------------- *
+                    Others
+ * ---------------------------------------- */
 // A setter for the bus pointer
 void CPU6502::ConnectBus(Bus *n)
 {
